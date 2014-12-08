@@ -1,5 +1,9 @@
 Programmeren in Dependently Typed Talen
 =======================================
+Toon Nolten
+
+.. image:: image/cc_by.png
+
 
 Dependent Types
 ===============
@@ -10,11 +14,16 @@ Dependent Types
 
 ::
 
-    (A : Set) → (n : Nat) → Vec A n
+    data Vec {a} (A : Set a) : ℕ → Set a where
+      []  : Vec A zero
+      _∷_ : ∀ {n} (x : A) (xs : Vec A n) → Vec A (suc n)
+
+    head : ∀ {a n} {A : Set a} → Vec A (1 + n) → A
+    head (x ∷ xs) = x
+
 
 Waarom
 ======
-
 types?
 ------
 
@@ -28,6 +37,9 @@ types?
     b = True
     c = a / b
 
+
+Waarom
+======
 dependent types?
 ----------------
 
@@ -40,9 +52,12 @@ dependent types?
 
     _div_ : (dividend : Nat)
             → (divisor : Nat)
-            → (≢0 : False (divisor ≟ 0))
+            → (proof : NonZero divisor)
             → Nat
 
+
+Waarom
+======
 dependent types?
 ----------------
 
@@ -55,12 +70,20 @@ dependent types?
     data List (A : Set) : Set where
       []  : List A
       _∷_ : A → List A → List A
+    
+    data ⊥X⊤ : Set where
+      ⊤   : ⊥X⊤
+      ⊥   : ⊥X⊤
+      ⟦_⟧ : X → ⊥X⊤
 
     data OList (l u : ⊥A⊤) : Set where
-      nil  : l ≤̂ u → OList l u
-      cons : ∀ x (xs : OList ⟦ x ⟧ u)
-             → l ≤̂ ⟦ x ⟧ → OList l u
+      Nil  : l ≤ u → OList l u
+      Cons : ∀ x (xs : OList ⟦ x ⟧ u)
+             → l ≤ ⟦ x ⟧ → OList l u
 
+
+Waarom
+======
 dependent types?
 ----------------
 
@@ -69,31 +92,14 @@ dependent types?
 ::
 
     insert : ∀ {l u} x → OList l u
-             → l ≤̂ ⟦ x ⟧ → ⟦ x ⟧ ≤̂ u
+             → l ≤ ⟦ x ⟧ → ⟦ x ⟧ ≤ u
              → OList l u
-    insert y (nil _)         l≤y y≤u =
-      cons y (nil y≤u) l≤y
-    insert y (cons x xs l≤x) l≤y y≤u
-      with y ≤? x
-    insert y (cons x xs l≤x) l≤y y≤u
-      | left  y≤x =
-      cons y (cons x xs (≤-lift y≤x)) l≤y
-    insert y (cons x xs l≤x) l≤y y≤u
-      | right y>x =
-      cons x (insert y xs
-               ([ ≤-lift ,
-                  (λ y≤x → absurd (y>x y≤x))
-                ] (total x y)) y≤u) l≤x
-
-dependent types?
-----------------
-
-.. class:: prettyprint lang-agda
-
-::
 
     isort′ : List X → OList ⊥ ⊤
-    isort′ = foldr (λ x xs → insert x xs ⊥≤̂ ≤̂⊤) (nil ⊥≤̂)
+    isort′ = foldr (λ x xs → insert x xs (⊥ ≤ ⟦ x ⟧) (⟦ x ⟧ ≤ ⊤))
+                   (Nil (⊥ ≤ ⟦ x ⟧))
+
+    toList : ∀ {l u} → OList l u → List X
 
     isort : List X → List X
     isort xs = toList (isort′ xs)
@@ -104,13 +110,20 @@ Mijn thesis
 ===========
 
 * Hoe verschillen talen met dependent types
-* Universele patronen (views, universes)
-* Patronen die taalspecifiek zijn
+* Universele technieken (views, universes)
+* (Misschien) Technieken die taalspecifiek zijn
 * Programming vs Extracting
+
+
+Hoe verschillen talen met dependent types
+=========================================
+* Een vergelijking op basis van een aantal case studies
+* Haskell, Agda, Coq, Idris
+* vb. functors in Haskell en Agda
+
 
 Functors
 ========
-
 Haskell
 -------
 
@@ -121,13 +134,17 @@ Haskell
     class  Functor f  where
         fmap :: (a -> b) -> f a -> f b
 
+        (<$)        :: a -> f b -> f a
+        (<$)        =  fmap . const
+
     (<$>) :: (Functor f) => (a -> b)
              -> f a -> f b  
     f <$> x = fmap f x
 
-    (<$)        :: a -> f b -> f a
-    (<$)        =  fmap . const
 
+
+Functors
+========
 Agda
 ----
 
@@ -135,7 +152,7 @@ Agda
 
 ::
 
-    record RawFunctor (F : Set ℓ → Set ℓ) :
+    record RawFunctor (F : Set → Set) :
             Set where
       field
         _<$>_ : ∀ {A B} → (A → B)
@@ -143,3 +160,46 @@ Agda
 
       _<$_ : ∀ {A B} → A → F B → F A
       x <$ y = const x <$> y
+
+
+Universele technieken
+=====================
+views
+-----
+
+.. class:: prettyprint lang-agda
+
+::
+
+    data SnocView {A : Set } : List A → Set where
+      Nil  : SnocView Nil
+      Snoc : (xs : List A) → (x : A) →
+        SnocView (append xs (Cons x Nil))
+
+    view : {A : Set } → (xs : List A) → SnocView xs
+    view Nil = Nil
+    view (Cons x xs)                       with view xs
+    view (Cons x .Nil)                    | Nil
+      = Snoc Nil x
+    view (Cons x .(append ys (Cons y Nil))) | Snoc ys y
+      = Snoc (Cons x ys) y
+
+
+Programming vs Extracting
+=========================
+* Sommige dependently typed talen laten toe om uit een bewijs een programma af
+  te leiden (Coq, Agda)
+* i.p.v. een efficiënte compiler nodig te hebben, kunnen we een
+  programma extraheren in een taal waarvoor er een sterke compiler bestaat
+* Ook al is die taal niet dependently typed, zolang de extractie juist werkt,
+  hebben we een bewijs dat het programma correct werkt
+
+
+Referenties
+===========
+
+::
+
+    http://www.cse.chalmers.se/~ulfn/papers/afp08/tutorial.pdf
+    http://cs.ru.nl/~wouters/Publications/ThePowerOfPi.pdf
+    http://mazzo.li/posts/AgdaSort.html
